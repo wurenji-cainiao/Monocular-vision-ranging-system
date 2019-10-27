@@ -1,86 +1,68 @@
-#!usr/bin/python
+#!/usr/bin/python3
 # -*- coding: utf-8 -*-
-# 定义编码，中文注释
+# Date: 18-10-29
 
-# import the necessary packages
-import numpy as np
-import cv2
+import numpy as np      # 导入numpy库
+import cv2              # 导入Opencv库
+
+KNOWN_DISTANCE = 32   # 这个距离自己实际测量一下
+
+KNOWN_WIDTH = 11.69     # A4纸的宽度
+KNOWN_HEIGHT = 8.27
+
+IMAGE_PATHS = ["Picture1.jpg", "Picture2.jpg", "Picture3.jpg"]   # 将用到的图片放到了一个列表中
 
 
-# 找到目标函数
+# 定义目标函数
 def find_marker(image):
-    # convert the image to grayscale, blur it, and detect edges
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    gray = cv2.GaussianBlur(gray, (5, 5), 0)
-    edged = cv2.Canny(gray, 35, 125)
-
-    # find the contours in the edged image and keep the largest one;
-    # we'll assume that this is our piece of paper in the image
-    (cnts, _) = cv2.findContours(edged.copy(), cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
-    # 求最大面积
-    c = max(cnts, key=cv2.contourArea)
-
-    # compute the bounding box of the of the paper region and return it
-    # cv2.minAreaRect() c代表点集，返回rect[0]是最小外接矩形中心点坐标，
-    # rect[1][0]是width，rect[1][1]是height，rect[2]是角度
-    return cv2.minAreaRect(c)
+    gray_img = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)  # 将彩色图转化为灰度图
+    gray_img = cv2.GaussianBlur(gray_img, (5, 5), 0)    # 高斯平滑去噪
+    edged_img = cv2.Canny(gray_img, 35, 125)     # Canny算子阈值化
+    cv2.imshow("降噪效果图", edged_img)          # 显示降噪后的图片
+    # 获取纸张的轮廓数据
+    img, countours, hierarchy = cv2.findContours(edged_img.copy(), cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+    # print(len(countours))
+    c = max(countours, key=cv2.contourArea)    # 获取最大面积对应的点集
+    rect = cv2.minAreaRect(c)       # 最小外接矩形
+    return rect
 
 
-# 距离计算函数
+# 定义距离函数
 def distance_to_camera(knownWidth, focalLength, perWidth):
-    # compute and return the distance from the maker to the camera
     return (knownWidth * focalLength) / perWidth
 
 
-# initialize the known distance from the camera to the object, which
-# in this case is 24 inches
-KNOWN_DISTANCE = 24.0
+# 计算摄像头的焦距（内参）
+def calculate_focalDistance(img_path):
+    first_image = cv2.imread(img_path)      # 这里根据准备的第一张图片，计算焦距
+    cv2.imshow('first image', first_image)
+    marker = find_marker(first_image)       # 获取矩形的中心点坐标，长度，宽度和旋转角度
+    focalLength = (marker[1][0] * KNOWN_DISTANCE) / KNOWN_WIDTH  # 获取摄像头的焦距
+    # print(marker[1][0])
+    print('焦距(focalLength) = ', focalLength)        # 打印焦距的值
+    return focalLength
 
-# initialize the known object width, which in this case, the piece of
-# paper is 11 inches wide
-# A4纸的长和宽(单位:inches)
-KNOWN_WIDTH = 11.69
-KNOWN_HEIGHT = 8.27
 
-# initialize the list of images that we'll be using
-IMAGE_PATHS = ["Picture1.jpg", "Picture2.jpg", "Picture3.jpg"]
+# 计算摄像头到物体的距离
+def calculate_Distance(image_path, focalLength_value):
+    image = cv2.imread(image_path)
+    # cv2.imshow("原图", image)
+    marker = find_marker(image)     # 获取矩形的中心点坐标，长度，宽度和旋转角度， marke[1][0]代表宽度
+    distance_inches = distance_to_camera(KNOWN_WIDTH, focalLength_value, marker[1][0])
+    box = cv2.boxPoints(marker)
+    # print("Box = ", box)
+    box = np.int0(box)
+    print("Box = ", box)
+    cv2.drawContours(image, [box], -1, (0, 255, 0), 2)      # 绘制物体轮廓
+    cv2.putText(image, "%.2fcm" % (distance_inches * 2.54), (image.shape[1] - 300, image.shape[0] - 20),
+                cv2.FONT_HERSHEY_SIMPLEX, 2.0, (0, 255, 0), 3)
+    cv2.imshow("单目测距", image)
 
-# load the furst image that contains an object that is KNOWN TO BE 2 feet
-# from our camera, then find the paper marker in the image, and initialize
-# the focal length
-# 读入第一张图，通过已知距离计算相机焦距
-image = cv2.imread(IMAGE_PATHS[0])
-marker = find_marker(image)
-focalLength = (marker[1][0] * KNOWN_DISTANCE) / KNOWN_WIDTH
+if __name__ == "__main__":
+    img_path = "Picture1.jpg"
+    focalLength = calculate_focalDistance(img_path)
 
-# 通过摄像头标定获取的像素焦距
-# focalLength = 811.82
-print('focalLength = ', focalLength)
-
-# 打开摄像头
-camera = cv2.VideoCapture(0)
-
-while camera.isOpened():
-    # get a frame
-    (grabbed, frame) = camera.read()
-    marker = find_marker(frame)
-    if marker == 0:
-        print(marker)
-        continue
-    inches = distance_to_camera(KNOWN_WIDTH, focalLength, marker[1][0])
-
-    # draw a bounding box around the image and display it
-    box = np.int0(cv2.cv.BoxPoints(marker))
-    cv2.drawContours(frame, [box], -1, (0, 255, 0), 2)
-
-    # inches 转换为 cm
-    cv2.putText(frame, "%.2fcm" % (inches * 30.48 / 12),
-                (frame.shape[1] - 200, frame.shape[0] - 20), cv2.FONT_HERSHEY_SIMPLEX,
-                2.0, (0, 255, 0), 3)
-
-    # show a frame
-    cv2.imshow("capture", frame)
-    if cv2.waitKey(1) & 0xFF == ord('q'):
-        break
-camera.release()
-cv2.destroyAllWindows()
+    for image_path in IMAGE_PATHS:
+        calculate_Distance(image_path, focalLength)
+        cv2.waitKey(0)
+    cv2.destroyAllWindows()
