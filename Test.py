@@ -1,6 +1,10 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
+<<<<<<< HEAD
 # Date: 19-10-28
+=======
+# Date: 18-10-29
+>>>>>>> 48c7c688a084ed58596145ff66984d99a74d63e1
 
 import numpy as np      # 导入numpy库
 import cv2              # 导入Opencv库
